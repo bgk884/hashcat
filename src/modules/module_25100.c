@@ -21,12 +21,9 @@ static const u32   DGST_SIZE      = DGST_SIZE_4_4; // 4_3
 static const u32   HASH_CATEGORY  = HASH_CATEGORY_NETWORK_PROTOCOL;
 static const char *HASH_NAME      = "SNMPv3 HMAC-MD5-96";
 static const u64   KERN_TYPE      = 25100;
-static const u32   OPTI_TYPE      = OPTI_TYPE_ZERO_BYTE
-                                  | OPTI_TYPE_SLOW_HASH_SIMD_LOOP;
-static const u64   OPTS_TYPE      = OPTS_TYPE_PT_GENERATE_LE
-                                  | OPTS_TYPE_HASH_COPY;
+static const u32   OPTI_TYPE      = OPTI_TYPE_ZERO_BYTE;
+static const u64   OPTS_TYPE      = OPTS_TYPE_PT_GENERATE_LE;
 static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
-
 static const char *ST_PASS        = "hashcat";
 static const char *ST_HASH        = "$SNMPv3$1$76$3081b10201033011020430f6f3d5020300ffe304010702010304373035040d80001f888059dc486145a2632202010802020ab90405706970706f040c00000000000000000000000004080000000103d5321a0460826ecf6443956d4c364bfc6f6ffc8ee0df000ffd0955af12d2c0f3c60fadea417d2bb80c0b2c1fa7a46ce44f9f16e15ee830a49881f60ecfa757d2f04000eb39a94058121d88ca20eeef4e6bf06784c67c15f144915d9bc2c6a0461da92a4abe$80001f888059dc486145a26322$c51ba677ad96869c1cb32196";
 
@@ -105,7 +102,8 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   token.len_min[1] = 1;
   token.len_max[1] = 8;
   token.sep[1]     = '$';
-  token.attr[1]    = TOKEN_ATTR_VERIFY_LENGTH;
+  token.attr[1]    = TOKEN_ATTR_VERIFY_LENGTH
+                   | TOKEN_ATTR_VERIFY_DIGIT;
 
   // salt
   token.len_min[2] = 12 * 2;
@@ -131,6 +129,15 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   if (rc_tokenizer != PARSER_OK) return (rc_tokenizer);
 
+  // packet number
+
+  const u8 *packet_number_pos = token.buf[1];
+  const int packet_number_len = token.len[1];
+
+  memset (snmpv3->packet_number, 0, sizeof (snmpv3->packet_number));
+
+  strncpy ((char *) snmpv3->packet_number, (char *) packet_number_pos, packet_number_len);
+
   // salt
 
   const u8 *salt_pos = token.buf[2];
@@ -138,15 +145,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   u8 *salt_ptr = (u8 *) snmpv3->salt_buf;
 
-  int i;
-  int j;
-
-  for (i = 0, j = 0; i < salt_len; i += 2, j += 1)
-  {
-    salt_ptr[j] = hex_to_u8 (salt_pos + i);
-  }
-
-  snmpv3->salt_len = salt_len / 2;
+  snmpv3->salt_len = hex_decode (salt_pos, salt_len, salt_ptr);
 
   salt->salt_iter = 16384 - 1;
 
@@ -169,12 +168,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   u8 *engineID_ptr = (u8 *) snmpv3->engineID_buf;
 
-  for (i = 0, j = 0; i < engineID_len; i += 2, j += 1)
-  {
-    engineID_ptr[j] = hex_to_u8 (engineID_pos + i);
-  }
-
-  snmpv3->engineID_len = engineID_len / 2;
+  snmpv3->engineID_len = hex_decode (engineID_pos, engineID_len, engineID_ptr);
 
   // digest
 
@@ -191,7 +185,25 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
 int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const void *digest_buf, MAYBE_UNUSED const salt_t *salt, MAYBE_UNUSED const void *esalt_buf, MAYBE_UNUSED const void *hook_salt_buf, MAYBE_UNUSED const hashinfo_t *hash_info, char *line_buf, MAYBE_UNUSED const int line_size)
 {
-  const int line_len = snprintf (line_buf, line_size, "%s", hash_info->orighash);
+  const u32 *digest = (const u32 *) digest_buf;
+
+  snmpv3_t *snmpv3 = (snmpv3_t *) esalt_buf;
+
+  int line_len = snprintf (line_buf, 10 + strlen ((char *) snmpv3->packet_number) + 1 + 1, "%s%s$", SIGNATURE_SNMPV3, snmpv3->packet_number);
+
+  const u8 *salt_buf_ptr = (u8 *) snmpv3->salt_buf;
+
+  line_len += hex_encode (salt_buf_ptr, snmpv3->salt_len, (u8 *) line_buf+line_len);
+
+  line_len += snprintf (line_buf+line_len, 2, "$");
+
+  line_len += hex_encode (snmpv3->engineID_buf, snmpv3->engineID_len, (u8 *) line_buf+line_len);
+
+  line_len += snprintf (line_buf+line_len, 2, "$");
+
+  line_len += snprintf (line_buf+line_len, 9, "%08x", byte_swap_32 (digest[0]));
+  line_len += snprintf (line_buf+line_len, 9, "%08x", byte_swap_32 (digest[1]));
+  line_len += snprintf (line_buf+line_len, 9, "%08x", byte_swap_32 (digest[2]));
 
   return line_len;
 }
