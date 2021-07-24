@@ -204,11 +204,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   digest[1] = hex_to_u32 (hash_pos +  8);
   digest[2] = hex_to_u32 (hash_pos + 16);
   digest[3] = 0;
-/*
-  digest[0] = byte_swap_32 (digest[0]);
-  digest[1] = byte_swap_32 (digest[1]);
-  digest[2] = byte_swap_32 (digest[2]);
-*/
+
   return (PARSER_OK);
 }
 
@@ -234,15 +230,9 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   out_len++;
 
-  u32 digest_tmp[3];
-
-  digest_tmp[0] = byte_swap_32 (digest[0]);
-  digest_tmp[1] = byte_swap_32 (digest[1]);
-  digest_tmp[2] = byte_swap_32 (digest[2]);
-
-  u32_to_hex (digest_tmp[0], out_buf + out_len); out_len += 8;
-  u32_to_hex (digest_tmp[1], out_buf + out_len); out_len += 8;
-  u32_to_hex (digest_tmp[2], out_buf + out_len); out_len += 8;
+  u32_to_hex (digest[0], out_buf + out_len); out_len += 8;
+  u32_to_hex (digest[1], out_buf + out_len); out_len += 8;
+  u32_to_hex (digest[2], out_buf + out_len); out_len += 8;
 
   out_buf[out_len] = 0;
 
