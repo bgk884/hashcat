@@ -44,27 +44,35 @@ const char *module_st_pass        (MAYBE_UNUSED const hashconfig_t *hashconfig, 
 
 static const char *SIGNATURE_SNMPV3 = "$SNMPv3$1$";
 
-#define SNMPV3_SALT_MAX 1500
-#define SNMPV3_SALT_MAX_BIN 752
-#define SNMPV3_ENGINEID_MAX 32
-#define SNMPV3_MSG_AUTH_PARAMS_MAX 12
+#define SNMPV3_SALT_MAX             1500
+#define SNMPV3_ENGINEID_MAX         32
+#define SNMPV3_MSG_AUTH_PARAMS_MAX  12
+#define SNMPV3_ROUNDS               1048576
+#define SNMPV3_MAX_PW_LENGTH        64
+
+#define SNMPV3_TMP_ELEMS            4096 // 4096 = (256 (max pw length) * 64) / sizeof (u32)
+#define SNMPV3_HASH_ELEMS           4
+
+#define SNMPV3_MAX_SALT_ELEMS       512 // 512 * 4 = 2048 > 1500, also has to be multiple of 64
+#define SNMPV3_MAX_ENGINE_ELEMS     16  // 16 * 4 = 64 > 32, also has to be multiple of 64
+#define SNMPV3_MAX_PNUM_ELEMS       4   // 4 * 4 = 16 > 9
 
 typedef struct hmac_md5_tmp
 {
-  u32 idx;
-  md5_ctx_t ctx;
+  u32 tmp[SNMPV3_TMP_ELEMS];
+  u32 h[SNMPV3_HASH_ELEMS];
 
 } hmac_md5_tmp_t;
 
 typedef struct snmpv3
 {
-  u32 salt_buf[SNMPV3_SALT_MAX_BIN];
+  u32 salt_buf[SNMPV3_MAX_SALT_ELEMS];
   u32 salt_len;
 
-  u8 engineID_buf[SNMPV3_ENGINEID_MAX];
+  u32 engineID_buf[SNMPV3_MAX_ENGINE_ELEMS];
   u32 engineID_len;
 
-  u8 packet_number[8+1];
+  u32 packet_number[SNMPV3_MAX_PNUM_ELEMS];
 
 } snmpv3_t;
 
@@ -80,6 +88,23 @@ u64 module_tmp_size (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED c
   const u64 tmp_size = (const u64) sizeof (hmac_md5_tmp_t);
 
   return tmp_size;
+}
+
+u32 module_kernel_loops_min (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const user_options_t *user_options, MAYBE_UNUSED const user_options_extra_t *user_options_extra)
+{
+  // we need to fix iteration count to guarantee the loop count is a multiple of 64
+  // 2k calls to md5_transform typically is enough to overtime pcie bottleneck
+
+  const u32 kernel_loops_min = 2048 * 64;
+
+  return kernel_loops_min;
+}
+
+u32 module_kernel_loops_max (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const user_options_t *user_options, MAYBE_UNUSED const user_options_extra_t *user_options_extra)
+{
+  const u32 kernel_loops_max = 2048 * 64;
+
+  return kernel_loops_max;
 }
 
 int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED void *digest_buf, MAYBE_UNUSED salt_t *salt, MAYBE_UNUSED void *esalt_buf, MAYBE_UNUSED void *hook_salt_buf, MAYBE_UNUSED hashinfo_t *hash_info, const char *line_buf, MAYBE_UNUSED const int line_len)
@@ -104,7 +129,6 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   token.sep[1]     = '$';
   token.attr[1]    = TOKEN_ATTR_VERIFY_LENGTH
                    | TOKEN_ATTR_VERIFY_DIGIT;
-
   // salt
   token.len_min[2] = 12 * 2;
   token.len_max[2] = SNMPV3_SALT_MAX * 2;
@@ -147,7 +171,7 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   snmpv3->salt_len = hex_decode (salt_pos, salt_len, salt_ptr);
 
-  salt->salt_iter = 16384 - 1;
+  salt->salt_iter = SNMPV3_ROUNDS;
 
   // handle unique salts detection
 
@@ -179,9 +203,12 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   digest[0] = hex_to_u32 (hash_pos +  0);
   digest[1] = hex_to_u32 (hash_pos +  8);
   digest[2] = hex_to_u32 (hash_pos + 16);
-
   digest[3] = 0;
-
+/*
+  digest[0] = byte_swap_32 (digest[0]);
+  digest[1] = byte_swap_32 (digest[1]);
+  digest[2] = byte_swap_32 (digest[2]);
+*/
   return (PARSER_OK);
 }
 
@@ -191,27 +218,35 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   snmpv3_t *snmpv3 = (snmpv3_t *) esalt_buf;
 
-  int line_len = snprintf (line_buf, 10 + strlen ((char *) snmpv3->packet_number) + 1 + 1, "%s%s$", SIGNATURE_SNMPV3, snmpv3->packet_number);
+  u8 *out_buf = (u8 *) line_buf;
 
-  const u8 *salt_buf_ptr = (u8 *) snmpv3->salt_buf;
+  int out_len = snprintf (line_buf, line_size, "%s%s$", SIGNATURE_SNMPV3, (char *) snmpv3->packet_number);
 
-  line_len += hex_encode (salt_buf_ptr, snmpv3->salt_len, (u8 *) line_buf+line_len);
+  out_len += hex_encode ((u8 *) snmpv3->salt_buf, snmpv3->salt_len, out_buf + out_len);
 
-  line_buf[line_len] = '$';
+  out_buf[out_len] = '$';
 
-  line_len++;
+  out_len++;
 
-  line_len += hex_encode (snmpv3->engineID_buf, snmpv3->engineID_len, (u8 *) line_buf+line_len);
+  out_len += hex_encode ((u8 *) snmpv3->engineID_buf, snmpv3->engineID_len, out_buf + out_len);
 
-  line_buf[line_len] = '$';
+  out_buf[out_len] = '$';
 
-  line_len++;
+  out_len++;
 
-  u32_to_hex (digest[0], (u8 *) line_buf+line_len); line_len += 8;
-  u32_to_hex (digest[1], (u8 *) line_buf+line_len); line_len += 8;
-  u32_to_hex (digest[2], (u8 *) line_buf+line_len); line_len += 8;
+  u32 digest_tmp[3];
 
-  return line_len;
+  digest_tmp[0] = byte_swap_32 (digest[0]);
+  digest_tmp[1] = byte_swap_32 (digest[1]);
+  digest_tmp[2] = byte_swap_32 (digest[2]);
+
+  u32_to_hex (digest_tmp[0], out_buf + out_len); out_len += 8;
+  u32_to_hex (digest_tmp[1], out_buf + out_len); out_len += 8;
+  u32_to_hex (digest_tmp[2], out_buf + out_len); out_len += 8;
+
+  out_buf[out_len] = 0;
+
+  return out_len;
 }
 
 void module_init (module_ctx_t *module_ctx)
@@ -263,8 +298,8 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_jit_cache_disable        = MODULE_DEFAULT;
   module_ctx->module_kernel_accel_max         = MODULE_DEFAULT;
   module_ctx->module_kernel_accel_min         = MODULE_DEFAULT;
-  module_ctx->module_kernel_loops_max         = MODULE_DEFAULT;
-  module_ctx->module_kernel_loops_min         = MODULE_DEFAULT;
+  module_ctx->module_kernel_loops_max         = module_kernel_loops_max;
+  module_ctx->module_kernel_loops_min         = module_kernel_loops_min;
   module_ctx->module_kernel_threads_max       = MODULE_DEFAULT;
   module_ctx->module_kernel_threads_min       = MODULE_DEFAULT;
   module_ctx->module_kern_type                = module_kern_type;
