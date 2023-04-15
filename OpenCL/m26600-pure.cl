@@ -21,11 +21,11 @@
 
 typedef struct pbkdf2_sha256_tmp
 {
-  u32  ipad[8];
-  u32  opad[8];
+  u32 ipad[8];
+  u32 opad[8];
 
-  u32  dgst[32];
-  u32  out[32];
+  u32 dgst[32];
+  u32 out[32];
 
 } pbkdf2_sha256_tmp_t;
 

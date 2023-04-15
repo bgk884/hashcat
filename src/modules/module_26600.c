@@ -26,7 +26,6 @@ static const u64   OPTS_TYPE      = OPTS_TYPE_STOCK_MODULE
                                   | OPTS_TYPE_PT_GENERATE_LE;
 static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
 static const char *ST_PASS        = "hashcat1";
-// hash generated using with python3 tools/metamask2hashcat.py --vault tools/2hashcat_tests/metamask2hashcat.json
 static const char *ST_HASH        = "$metamask$jfGI3TXguhb8GPnKSXFrMzRk2NCEc131Gt5G3kZr5+s=$h+BoIf2CQ5BEjaIOShFE7g==$R95fzGt4UQ0uwrcrVYnIi4UcSlWn9wlmer+//526ZDwYAp50K82F1u1oacYcdjjhuEvbZnWk/uBG00UkgLLlO3WbINljqmu2QWdDEwjTgo/qWR6MU9d/82rxNiONHQE8UrZ8SV+htVr6XIB0ze3aCV0E+fwI93EeP79ZeDxuOEhuHoiYT0bHWMv5nA48AdluG4DbOo7SrDAWBVCBsEdXsOfYsS3/TIh0a/iFCMX4uhxY2824JwcWp4H36SFWyBYMZCJ3/U4DYFbbjWZtGRthoJlIik5BJq4FLu3Y1jEgza0AWlAvu4MKTEqrYSpUIghfxf1a1f+kPvxsHNq0as0kRwCXu09DObbdsiggbmeoBkxMZiFq0d9ar/3Gon0r3hfc3c124Wlivzbzu1JcZ3wURhLSsUS7b5cfG86aXHJkxmQDA5urBz6lw3bsIvlEUB2ErkQy/zD+cPwCG1Rs/WKt7KNh45lppCUkHccbf+xlpdc8OfUwj01Xp7BdH8LMR7Vx1C4hZCvSdtURVl0VaAMxHDX0MjRkwmqS";
 
 u32         module_attack_exec    (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSED const user_options_t *user_options, MAYBE_UNUSED const user_options_extra_t *user_options_extra) { return ATTACK_EXEC;     }
@@ -46,11 +45,11 @@ const char *module_st_pass        (MAYBE_UNUSED const hashconfig_t *hashconfig, 
 
 typedef struct pbkdf2_sha256_tmp
 {
-  u32  ipad[8];
-  u32  opad[8];
+  u32 ipad[8];
+  u32 opad[8];
 
-  u32  dgst[32];
-  u32  out[32];
+  u32 dgst[32];
+  u32 out[32];
 
 } pbkdf2_sha256_tmp_t;
 
@@ -260,26 +259,28 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   pbkdf2_sha256_aes_gcm_t *metamask = (pbkdf2_sha256_aes_gcm_t *) esalt_buf;
 
-  // salt
-
-  #define SALT_LEN_BASE64   ((32 * 8) / 6) + 3
-  #define IV_LEN_BASE64     ((16 * 8) / 6) + 3
   #define CT_MAX_LEN_BASE64 (((3136+16) * 8) / 6) + 3
 
-  u8 salt_buf[SALT_LEN_BASE64] = { 0 };
+  // salt
+
+  u8 salt_buf[44+1];
+
+  memset (salt_buf, 0, sizeof (salt_buf));
 
   base64_encode (int_to_base64, (const u8 *) salt->salt_buf, (const int) salt->salt_len, salt_buf);
 
   // iv
 
-  u32 tmp_iv_buf[4] = { 0 };
+  u32 tmp_iv_buf[4];
 
   tmp_iv_buf[0] = byte_swap_32 (metamask->iv_buf[0]);
   tmp_iv_buf[1] = byte_swap_32 (metamask->iv_buf[1]);
   tmp_iv_buf[2] = byte_swap_32 (metamask->iv_buf[2]);
   tmp_iv_buf[3] = byte_swap_32 (metamask->iv_buf[3]);
 
-  u8 iv_buf[IV_LEN_BASE64+1] = { 0 };
+  u8 iv_buf[24+1];
+
+  memset (iv_buf, 0, sizeof (iv_buf));
 
   base64_encode (int_to_base64, (const u8 *) tmp_iv_buf, (const int) metamask->iv_len, iv_buf);
 
@@ -291,11 +292,13 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   if ((ct_len % 4) > 0) j++;
 
-  u32 tmp_buf[784] = { 0 };
+  u32 tmp_buf[784];
+
+  memset (tmp_buf, 0, sizeof (tmp_buf));
 
   for (u32 i = 0; i < j; i++) tmp_buf[i] = byte_swap_32 (metamask->ct_buf[i]);
 
-  u32 tmp_tag[4] = { 0 };
+  u32 tmp_tag[4];
 
   tmp_tag[0] = byte_swap_32 (digest[0]);
   tmp_tag[1] = byte_swap_32 (digest[1]);
@@ -307,7 +310,9 @@ int module_hash_encode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
 
   memcpy (tmp_buf_str+metamask->ct_len, tmp_tag_str, 16);
 
-  u8 ct_buf[CT_MAX_LEN_BASE64] = { 0 };
+  u8 ct_buf[CT_MAX_LEN_BASE64];
+
+  memset (ct_buf, 0, sizeof (ct_buf));
 
   base64_encode (int_to_base64, (const u8 *) tmp_buf, (const int) metamask->ct_len+16, ct_buf);
 
