@@ -88,6 +88,8 @@
 - Metal Backend: added workaround to prevent 'Infinite Loop' bug when build kernels
 - User Options: added --metal-compiler-runtime option
 - Help: show supported hash-modes only with -hh
+- User Options: assigned -H to --hash-info
+- Hash-Info: show more details using -HH
 
 * changes v6.2.5 -> v6.2.6
 
