@@ -724,21 +724,25 @@ void hash_info_single_json (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *us
 
       const char *t_salt_desc = (t == SALT_TYPE_EMBEDDED) ? "embedded" : (t == SALT_TYPE_GENERIC) ? "generic" : "virtual";
 
-      u32 t_salt_min = hashconfig->salt_min;
-      u32 t_salt_max = hashconfig->salt_max;
-
-      if (user_options->hash_info > 1)
-      {
-        if (hashconfig->opts_type & OPTS_TYPE_ST_HEX)
-        {
-          t_salt_min *= 2;
-          t_salt_max *= 2;
-        }
-      }
-
       printf ("\"salt_type\": \"%s\", ", t_salt_desc);
-      printf ("\"salt_len_min\": %u, ", t_salt_min);
-      printf ("\"salt_len_max\": %u, ", t_salt_max);
+
+      if (hashconfig->salt_type == SALT_TYPE_GENERIC || hashconfig->salt_type == SALT_TYPE_EMBEDDED)
+      {
+        u32 t_salt_min = hashconfig->salt_min;
+        u32 t_salt_max = hashconfig->salt_max;
+
+        if (user_options->hash_info > 1)
+        {
+          if (hashconfig->opts_type & OPTS_TYPE_ST_HEX)
+          {
+            t_salt_min *= 2;
+            t_salt_max *= 2;
+          }
+        }
+
+        printf ("\"salt_len_min\": %u, ", t_salt_min);
+        printf ("\"salt_len_max\": %u, ", t_salt_max);
+      }
     }
 
     if ((hashconfig->has_pure_kernel) && (hashconfig->has_optimized_kernel))
@@ -771,17 +775,20 @@ void hash_info_single_json (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *us
       printf ("\"hashes_count_min\": %d, ", hashconfig->hashes_count_min);
       printf ("\"hashes_count_max\": %d, ", hashconfig->hashes_count_max);
 
-      bool multi_hash_same_salt = true;
-
-      if ((hashconfig->opts_type & OPTS_TYPE_DEEP_COMP_KERNEL) == 0)
+      if (hashconfig->salt_type == SALT_TYPE_GENERIC || hashconfig->salt_type == SALT_TYPE_EMBEDDED)
       {
-        if (hashconfig->attack_exec == ATTACK_EXEC_OUTSIDE_KERNEL)
-        {
-          multi_hash_same_salt = false;
-        }
-      }
+        bool multi_hash_same_salt = true;
 
-      printf ("\"hashes_with_same_salt\": %s, ", (multi_hash_same_salt == true) ? "true" : "false");
+        if ((hashconfig->opts_type & OPTS_TYPE_DEEP_COMP_KERNEL) == 0)
+        {
+          if (hashconfig->attack_exec == ATTACK_EXEC_OUTSIDE_KERNEL)
+          {
+            multi_hash_same_salt = false;
+          }
+        }
+
+        printf ("\"hashes_with_same_salt\": %s, ", (multi_hash_same_salt == true) ? "true" : "false");
+      }
     }
 
     if ((hashconfig->st_hash != NULL) && (hashconfig->st_pass != NULL))
@@ -951,21 +958,25 @@ void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *user_op
 
       const char *t_salt_desc = (t == SALT_TYPE_EMBEDDED) ? "Embedded\0" : (t == SALT_TYPE_GENERIC) ? "Generic\0" : "Virtual\0";
 
-      u32 t_salt_min = hashconfig->salt_min;
-      u32 t_salt_max = hashconfig->salt_max;
-
-      if (user_options->hash_info > 1)
-      {
-        if (hashconfig->opts_type & OPTS_TYPE_ST_HEX)
-        {
-          t_salt_min *= 2;
-          t_salt_max *= 2;
-        }
-      }
-
       event_log_info (hashcat_ctx, "  Salt.Type...........: %s", t_salt_desc);
-      event_log_info (hashcat_ctx, "  Salt.Len.Min........: %u", t_salt_min);
-      event_log_info (hashcat_ctx, "  Salt.Len.Max........: %u", t_salt_max);
+
+      if (hashconfig->salt_type == SALT_TYPE_GENERIC || hashconfig->salt_type == SALT_TYPE_EMBEDDED)
+      {
+        u32 t_salt_min = hashconfig->salt_min;
+        u32 t_salt_max = hashconfig->salt_max;
+
+        if (user_options->hash_info > 1)
+        {
+          if (hashconfig->opts_type & OPTS_TYPE_ST_HEX)
+          {
+            t_salt_min *= 2;
+            t_salt_max *= 2;
+          }
+        }
+
+        event_log_info (hashcat_ctx, "  Salt.Len.Min........: %u", t_salt_min);
+        event_log_info (hashcat_ctx, "  Salt.Len.Max........: %u", t_salt_max);
+      }
     }
 
     if ((hashconfig->has_pure_kernel) && (hashconfig->has_optimized_kernel))
@@ -998,17 +1009,20 @@ void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *user_op
       event_log_info (hashcat_ctx, "  Hashes.Count.Min....: %d", hashconfig->hashes_count_min);
       event_log_info (hashcat_ctx, "  Hashes.Count.Max....: %d", hashconfig->hashes_count_max);
 
-      bool multi_hash_same_salt = true;
-
-      if ((hashconfig->opts_type & OPTS_TYPE_DEEP_COMP_KERNEL) == 0)
+      if (hashconfig->salt_type == SALT_TYPE_GENERIC || hashconfig->salt_type == SALT_TYPE_EMBEDDED)
       {
-        if (hashconfig->attack_exec == ATTACK_EXEC_OUTSIDE_KERNEL)
-        {
-          multi_hash_same_salt = false;
-        }
-      }
+        bool multi_hash_same_salt = true;
 
-      event_log_info (hashcat_ctx, "  Hashes.w/.Same.Salt.: %s", (multi_hash_same_salt == true) ? "Allowed" : "Not allowed");
+        if ((hashconfig->opts_type & OPTS_TYPE_DEEP_COMP_KERNEL) == 0)
+        {
+          if (hashconfig->attack_exec == ATTACK_EXEC_OUTSIDE_KERNEL)
+          {
+            multi_hash_same_salt = false;
+          }
+        }
+
+        event_log_info (hashcat_ctx, "  Hashes.w/.Same.Salt.: %s", (multi_hash_same_salt == true) ? "Allowed" : "Not allowed");
+      }
     }
 
     if ((hashconfig->st_hash != NULL) && (hashconfig->st_pass != NULL))
